@@ -11,7 +11,7 @@ params.fasta = params.genome ? params.genomes[ params.genome ].fasta ?: false : 
 
 process preprocess {
     conda '/home/xfu/miniconda3/envs/chop'
-    publishDir "$params.outdir/expression"
+    // publishDir "$params.outdir/expression"
     input:
     file microarray
 
@@ -33,7 +33,7 @@ process deg {
     input:
     file expression
     output:
-    file "*"
+    file "*.{pdf,csv}"
     script:
     """
     deg.py
@@ -120,7 +120,8 @@ workflow {
         | map { x -> x[0] } \
 
     fimo.out \
-        | filter ( ~/^.*invariant.*/ ) \
+        | filter ( ~/^.*variant.*/ ) \
         | combine (interested_tfs) \
         | find_coregulators
+
 }
