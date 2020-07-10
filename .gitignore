@@ -4,3 +4,4 @@ results/
 .vscode/
 .nextflow/
 .nextflow.log
+.nextflow.log.*
