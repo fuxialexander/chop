@@ -1,0 +1,6 @@
+raw/
+work/
+results/
+.vscode/
+.nextflow/
+.nextflow.log
