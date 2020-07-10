@@ -11,7 +11,7 @@ params.fasta = params.genome ? params.genomes[ params.genome ].fasta ?: false : 
 
 process preprocess {
     conda '/home/xfu/miniconda3/envs/chop'
-    publishDir "${params.outdir}/expression/"
+    publishDir "$params.outdir/expression"
     input:
     file microarray
 
@@ -25,7 +25,7 @@ process preprocess {
 
 process deg {
     conda '/home/xfu/miniconda3/envs/chop'
-    publishDir "${params.outdir}/deg", saveAs: { 
+    publishDir "$params.outdir/deg", saveAs: { 
         filename -> filename.endsWith(".pdf") 
         ? "plots/$filename" 
         : "lists/$filename"
@@ -51,7 +51,7 @@ process get_deg_promoter {
         | tail -n +2 \
         | awk '{print \$1"\t"\$1"_1"}'  \
         | sort -k2,2 \
-        | join -1 2 -2 4 - <(sort -k4,4 ${params.tss}) -t\$'\t' \
+        | join -1 2 -2 4 - <(sort -k4,4 $params.tss) -t\$'\t' \
         | awk '{OFS="\t";print \$3,\$4-500,\$5+500,\$2,\$6,\$7}' \
         > ${deg.baseName}.bed
     """
@@ -62,7 +62,7 @@ process get_all_promoter {
     file "*.bed"
     script:
     """
-    cat ${params.tss} \
+    cat $params.tss \
         | awk -F"[\t_]" '{OFS="\t";print \$1,\$2-500,\$3+500,\$4,\$6,\$7}' \
         > ${params.genome}.promoter.bed
     """
@@ -70,24 +70,23 @@ process get_all_promoter {
 
 include fimo from './nf_modules/meme/fimo.nf' params (
     conda: '/home/xfu/miniconda3/envs/meme',
-    motif: "${params.motif}"
+    motif: "$params.motif"
 )
 
 include ame from './nf_modules/meme/ame.nf' params (
     conda: '/home/xfu/miniconda3/envs/meme',
-    motif: "${params.motif}"
+    motif: "$params.motif"
 )
 
-process fimo {
-    conda '/home/xfu/miniconda3/envs/meme'
-    publishDir "${params.outdir}/fimo", saveAs: { filename -> "${fasta.baseName}.fimo.tsv" }
+process find_coregulators {
+  publishDir "${params.outdir}/coregulators"
   input:
-    file fasta
+  tuple val(name), file(fimo), val(target)
   output:
-    file("fimo_out/fimo.tsv")
+  path "*.csv"
   script:
   """
-    fimo ${params.genomes.ucsc_mm10.motif} $fasta
+  find_coregulators.py -f $fimo -t $target -a $params.motif_annot -i 10 -o 40 -O ${name}.coregulators_of_${target}.csv
   """
 }
 
@@ -115,6 +114,13 @@ workflow {
         | combine (promoter_fa) \
         | ame
 
-    // invariant: co-regulators of ATF4
-    // fimo.out | filter ( ~/^.*invariant.*/ ) | view
+    // invariant: co-regulators of Atf4, Sox9
+    interested_tfs = Channel.fromPath('./interested_tfs.txt') \
+        | splitCsv \
+        | map { x -> x[0] } \
+
+    fimo.out \
+        | filter ( ~/^.*invariant.*/ ) \
+        | combine (interested_tfs) \
+        | find_coregulators
 }
