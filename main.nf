@@ -11,7 +11,7 @@ params.fasta = params.genome ? params.genomes[ params.genome ].fasta ?: false : 
 
 process preprocess {
     conda '/home/xfu/miniconda3/envs/chop'
-    // publishDir "$params.outdir/expression"
+    publishDir "$params.outdir/expression"
     input:
     file microarray
 
@@ -63,7 +63,7 @@ process get_all_promoter {
     script:
     """
     cat $params.tss \
-        | awk -F"[\t_]" '{OFS="\t";print \$1,\$2-500,\$3+500,\$4,\$6,\$7}' \
+        | awk -F"[\t_]" '{OFS="\t";print \$1,\$2-$params.tss_len,\$3+$params.tss_len,\$4,\$6,\$7}' \
         > ${params.genome}.promoter.bed
     """
 }
@@ -90,6 +90,19 @@ process find_coregulators {
   """
 }
 
+process overlap_ATF4_CHOP {
+    publishDir "${params.outdir}/chip"
+    input:
+    tuple file(csv), file(chip)
+    output:
+    path "*.${chip.baseName}.csv"
+    script:
+    """
+    head -n 2 $csv > ${csv.baseName}.${chip.baseName}.csv
+    tr ',' '\\t' < $csv | sort -k1,1 | join - <(sort -k1,1 $chip) | tr ' ' ',' >> ${csv.baseName}.${chip.baseName}.csv
+    """
+}
+
 include {get_fasta; get_fasta as get_fasta_1} \
     from './nf_modules/bedtools/get_fasta.nf' \
     params (fasta: "$params.fasta")
@@ -104,24 +117,31 @@ workflow {
     microarray \
         | preprocess \
         | deg \
-        | flatten \
-        | filter ( ~/^.*.csv/ ) \
-        | get_deg_promoter \
-        | get_fasta_1 \
-        | fimo
+        // | flatten \
+        // | filter ( ~/^.*.csv/ ) \
+        // | get_deg_promoter \
+        // | get_fasta_1 \
+        // | fimo
     
-    get_fasta_1.out \
-        | combine (promoter_fa) \
-        | ame
+    // get_fasta_1.out \
+    //     | combine (promoter_fa) \
+    //     | ame
 
-    // invariant: co-regulators of Atf4, Sox9
-    interested_tfs = Channel.fromPath('./interested_tfs.txt') \
-        | splitCsv \
-        | map { x -> x[0] } \
+    // // invariant: co-regulators of Atf4, Sox9
+    // interested_tfs = Channel.fromPath('./interested_tfs.txt') \
+    //     | splitCsv \
+    //     | map { x -> x[0] } \
 
-    fimo.out \
-        | filter ( ~/^.*variant.*/ ) \
-        | combine (interested_tfs) \
-        | find_coregulators
+    // fimo.out \
+    //     | filter ( ~/^.*variant.*/ ) \
+    //     | combine (interested_tfs) \
+    //     | find_coregulators
 
+    chip = Channel.fromPath(params.chip)
+
+    deg.out \
+    | flatten \
+    | filter ( ~/^.*.csv/ ) \
+    | combine ( chip ) \
+    | overlap_ATF4_CHOP
 }
